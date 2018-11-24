@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_SourceLinkBitbucketEnterpriseAssemblyFile Condition="'$(MSBuildRuntimeType)' != 'Core'">$(MSBuildThisFileDirectory)..\tools\net461\Microsoft.SourceLink.BitbucketEnterprise.Git.dll</_SourceLinkBitbucketEnterpriseAssemblyFile>
+    <_SourceLinkBitbucketEnterpriseAssemblyFile Condition="'$(MSBuildRuntimeType)' == 'Core'">$(MSBuildThisFileDirectory)..\tools\netcoreapp2.0\Microsoft.SourceLink.BitbucketEnterprise.Git.dll</_SourceLinkBitbucketEnterpriseAssemblyFile>
+  </PropertyGroup>
+
+  <UsingTask TaskName="Microsoft.SourceLink.BitbucketEnterprise.Git.GetSourceLinkUrl" AssemblyFile="$(_SourceLinkBitbucketEnterpriseAssemblyFile)"/>
+  <UsingTask TaskName="Microsoft.SourceLink.BitbucketEnterprise.Git.TranslateRepositoryUrls" AssemblyFile="$(_SourceLinkBitbucketEnterpriseAssemblyFile)"/>
+
+  <PropertyGroup>
+    <SourceLinkUrlInitializerTargets>$(SourceLinkUrlInitializerTargets);_InitializeBitbucketEnterpriseGitSourceLinkUrl</SourceLinkUrlInitializerTargets>
+    <SourceControlManagerUrlTranslationTargets>$(SourceControlManagerUrlTranslationTargets);TranslateBitbucketEnterpriseGitUrlsInSourceControlInformation</SourceControlManagerUrlTranslationTargets>
+  </PropertyGroup>
+
+  <Target Name="_InitializeBitbucketEnterpriseGitSourceLinkUrl" Inputs="@(SourceRoot)" Outputs="|%(Identity)|">
+    <!--
+      The task calculates SourceLink URL for a given SourceRoot.
+
+      If the SourceRoot is associated with a git repository with a recognized domain the <see cref="SourceLinkUrl"/>
+      output property is set to the content URL corresponding to the domain, otherwise it is set to string "N/A".
+
+      Recognized domains are specified via Hosts (initialized from SourceLinkBitbucketEnterpriseGitHost item group).
+      In addition SourceLinkHasSingleProvider is true an iplicit host is parsed from RepositoryUrl.
+
+      Example of SourceLinkBitbucketEnterpriseGitHost items:
+
+      <ItemGroup>
+        <SourceLinkBitbucketEnterpriseGitHost Include="bitbucket1.com" ContentUrl="http://bitbucket1.com"/>
+        <SourceLinkBitbucketEnterpriseGitHost Include="bitbucket2.com" />           ContentUrl defaults to https://bitbucket2.com
+        <SourceLinkBitbucketEnterpriseGitHost Include="bitbucket3.com:8080" />      ContentUrl defaults to https://bitbucket3.com:8080
+      </ItemGroup>
+
+      ContentUrl is optional. If not specified it defaults to "https://{domain}" or "http://{domain}", based on the scheme of SourceRoot.RepositoryUrl.
+    -->
+    <Microsoft.SourceLink.BitbucketEnterprise.Git.GetSourceLinkUrl RepositoryUrl="$(PrivateRepositoryUrl)" SourceRoot="@(SourceRoot)" Hosts="@(SourceLinkBitbucketEnterpriseGitHost)" IsSingleProvider="$(SourceLinkHasSingleProvider)">
+      <Output TaskParameter="SourceLinkUrl" PropertyName="_SourceLinkUrlToUpdate"/>
+    </Microsoft.SourceLink.BitbucketEnterprise.Git.GetSourceLinkUrl>
+
+    <ItemGroup>
+      <!-- Only update the SourceLinkUrl metadata if the SourceRoot belongs to this source control -->
+      <SourceRoot Update="%(Identity)" SourceLinkUrl="$(_SourceLinkUrlToUpdate)" Condition="'$(_SourceLinkUrlToUpdate)' != 'N/A'"/>
+    </ItemGroup>
+  </Target>
+
+  <!-- 
+    We need to translate ssh URLs to https.
+  -->
+  <Target Name="TranslateBitbucketEnterpriseGitUrlsInSourceControlInformation">
+
+    <ItemGroup>
+      <_TranslatedSourceRoot Remove="@(_TranslatedSourceRoot)"/>
+    </ItemGroup>
+
+    <Microsoft.SourceLink.BitbucketEnterprise.Git.TranslateRepositoryUrls RepositoryUrl="$(ScmRepositoryUrl)" SourceRoots="@(SourceRoot)" Hosts="@(SourceLinkBitbucketEnterpriseGitHost)" IsSingleProvider="$(SourceLinkHasSingleProvider)">
+      <Output TaskParameter="TranslatedRepositoryUrl" PropertyName="ScmRepositoryUrl"/>
+      <Output TaskParameter="TranslatedSourceRoots" ItemName="_TranslatedSourceRoot"/>
+    </Microsoft.SourceLink.BitbucketEnterprise.Git.TranslateRepositoryUrls>
+
+    <ItemGroup>
+      <SourceRoot Remove="@(SourceRoot)"/>
+      <SourceRoot Include="@(_TranslatedSourceRoot)"/>
+    </ItemGroup>
+  
+</Target>
+
+</Project>
